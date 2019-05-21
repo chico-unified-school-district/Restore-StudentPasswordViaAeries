@@ -1,0 +1,8 @@
+*desktop.ini
+*.log
+*.pw
+log/*
+logs/*
+*.zip
+*.cp
+*oauth2.txt
