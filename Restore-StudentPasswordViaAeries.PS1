@@ -74,7 +74,7 @@ do {
     Identity              = $user.ObjectGuid
     Enabled               = $True
     PasswordNeverExpires  = $False
-    ChangePasswordAtLogon = $True
+    ChangePasswordAtLogon = $False
     WhatIf                = $WhatIf
    }
    Write-Verbose "$sam,Set-ADUser Params"
