@@ -73,7 +73,7 @@ do {
    $setUser = @{
     Identity              = $user.ObjectGuid
     Enabled               = $True
-    PasswordNeverExpires  = $False
+    PasswordNeverExpires  = $True
     ChangePasswordAtLogon = $False
     WhatIf                = $WhatIf
    }
