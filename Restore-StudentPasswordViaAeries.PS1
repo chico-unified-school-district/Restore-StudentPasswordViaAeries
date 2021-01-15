@@ -54,6 +54,7 @@ $adSession = New-PSSession -ComputerName $DomainController -Credential $ADCreden
 $adCmdLets = @(
  'Get-ADUser'
  'Set-ADUser'
+ 'Set-ADAccountPassword'
  'Remove-ADPrincipalGroupMembership'
  'Add-ADPrincipalGroupMembership'
 )
