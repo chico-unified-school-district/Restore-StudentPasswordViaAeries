@@ -17,12 +17,12 @@
   Aeries user account requires SELECT permission to STU table and UPDATE permission to SUP table.  
 #>
 [cmdletbinding()]
-param ( 
+param (
  [Parameter(Mandatory = $True)]
  [Alias('DC')]
  [ValidateScript( { Test-Connection -ComputerName $_ -Quiet -Count 1 })]
  [string]$DomainController,
- # PSSession to Domain Controller and Use Active Directory CMDLETS  
+ # PSSession to Domain Controller and Use Active Directory CMDLETS
  [Parameter(Mandatory = $True)]
  [System.Management.Automation.PSCredential]$ADCredential,
  # Aeries Server\Database combination
@@ -31,23 +31,33 @@ param (
  [string]$SISServer,
  [Parameter(Mandatory = $True)]
  [string]$SISDatabase,
- # Aeries SQL user account with SELECT permission to STU table 
+ # Aeries SQL user account with SELECT permission to STU table
  [Parameter(Mandatory = $True)]
  [System.Management.Automation.PSCredential]$SISCredential,
+ [Parameter(Mandatory = $false)]
+ [string]$PrimaryPasswordGroup,
+ [Parameter(Mandatory = $true)]
+ [string]$SecondaryPasswordGroup,
  [SWITCH]$WhatIf
 )
 
 Clear-Host; $error.clear() # Clear Screen and $error
 Get-PSSession | Remove-PSSession -WhatIf:$false
 
-# AD Domain Controller Session
-$adCmdLets = 'Get-ADUser', 'Set-ADUser', 'Set-ADAccountPassword'
-$adSession = New-PSSession -ComputerName $DomainController -Credential $ADCredential
-Import-PSSession -Session $adSession -Module ActiveDirectory -CommandName $adCmdLets -AllowClobber > $null
-
 # Imported Functions
 . .\lib\Add-Log.ps1 # Format log entries
 . .\lib\Invoke-SqlCommand.ps1 # Useful function for querying SQL and returning results
+
+# AD Domain Controller Session
+Add-Log session ('{0} connected to {1}' -f $ADCredential.UserName, $DomainController)
+$adSession = New-PSSession -ComputerName $DomainController -Credential $ADCredential
+$adCmdLets = @(
+ 'Get-ADUser'
+ 'Set-ADUser'
+ 'Remove-ADPrincipalGroupMembership'
+ 'Add-ADPrincipalGroupMembership'
+)
+Import-PSSession -Session $adSession -Module ActiveDirectory -CommandName $adCmdLets -AllowClobber > $null
 
 $query = Get-Content -Path .\sql\aeries-adpw.sql -Raw
 $sisParams = @{
@@ -56,32 +66,58 @@ $sisParams = @{
  Credential = $SISCredential
 }
 do {
- $dbResults = Invoke-SqlCommand @sisParams -Query $query
- foreach ( $dbRow in $dbResults ) {
-  # Parse Database Query Results {
-  Write-Verbose ( $dbRow | Out-String ) # info on the current DB result being processed.
-  $empId = $dbRow.ID
+ $studentResets = Invoke-SqlCommand @sisParams -Query $query
+ foreach ( $stu in $studentResets ) {
+  # Parse Database Query Results
+  Write-Verbose ( $stu | Out-String ) # info on the current DB result being processed.
+  $empId = $stu.ID
   $user = Get-ADUser -LDAPFilter "(employeeid=$empId)"
+
   if ( $user ) {
+   Write-Debug 'process?'
    $sam = $user.samAccountName
-   [string]$birthdate = $dbRow.bd
+
+   if ($stu.GR -ge 6){
+    $targetGroup = $SecondaryPasswordGroup
+    $removeParams = @{
+     Identity = $user.ObjectGUID
+     MemberOf = $targetGroup
+     ErrorAction = 'SilentlyContinue'
+     Confirm = $false
+     WhatIf = $WhatIf
+    }
+    Remove-ADPrincipalGroupMembership @removeParams
+    Write-Verbose ('{0} (GR:{1}) removed from {2}' -f $sam, $stu.GR, $targetGroup)
+    Start-Sleep 15 # Give AD Time to replicate
+    $PasswordNeverExpires = $false
+   } else {
+    $PasswordNeverExpires = $true
+   }
+
+   [string]$birthdate = $stu.bd
    $plainPW = $birthdate.split('/ ')[2].substring(2) + $birthdate.split('/ ')[0] + $birthdate.split('/ ')[1]
    Write-Verbose $plainPW
    $pw = (ConvertTo-SecureString $plainPW -AsPlainText -force)
-   Set-ADAccountPassword -Identity $user.ObjectGuid -NewPassword $pw -Reset -Confirm:$False -Whatif:$WhatIf
-   Add-Log reset "$sam,AD Password Restored"
-   $setUser = @{
-    Identity              = $user.ObjectGuid
-    Enabled               = $True
-    PasswordNeverExpires  = $True
-    ChangePasswordAtLogon = $False
-    WhatIf                = $WhatIf
-   }
+   Set-ADAccountPassword -Identity $user.ObjectGuid -NewPassword $pw -Reset -Confirm:$false -Whatif:$WhatIf
+   Add-Log reset ('{0},AD Password Restored' -f $sam)
+
+   # $userParams
    Write-Verbose "$sam,Set-ADUser Params"
-   Set-ADUser @setUser
+   Set-ADuser -Identity $user.ObjectGuid -Enabled:$True -PasswordNeverExpires:$PasswordNeverExpires -Confirm:$false -WhatIf:$WhatIf
+
+   if ($stu.GR -ge 6){
+    Add-ADPrincipalGroupMembership -Identity $user.ObjectGUID -MemberOf $targetGroup -Confirm:$False -WhatIf:$WhatIf
+    Write-Verbose ('{0} (GR:{1}) added to {2}' -f $sam, $stu.GR, $targetGroup)
+    Start-Sleep 5
+    Set-ADUser -Identity $user.ObjectGuid -Replace @{pwdlastset=0} -Confirm:$false -WhatIf:$WhatIf
+   }
+
    Write-Verbose "$sam,Aeries: Update ADPW field."
-   $updateQuery = "UPDATE SUP SET ADPW = `'N`' WHERE SC = {0} and SN = {1}" -f $dbRow.SC, $dbRow.SN
+   $updateQuery = "UPDATE SUP SET ADPW = `'N`' WHERE SC = {0} and SN = {1}" -f $stu.SC, $stu.SN
    Invoke-SqlCommand @sisParams -SQLCommand $updateQuery -Whatif:$WhatIf
+   Write-Debug 'continue?'
+  } else {
+   Write-Verbose ('STU.ID {0} not found' -f $stu.ID)
   }
  } # End Parse Database Query Results
  # Loop every 3 seconds until 11:58pm

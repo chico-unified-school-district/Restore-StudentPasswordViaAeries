@@ -14,7 +14,7 @@ function Invoke-SqlCommand {
   [switch]$WhatIf
 	)
 	Write-Verbose "Running $($MyInvocation.MyCommand.Name)"
- Write-Verbose "Running SQL Command against $Connection as $user"
+ Write-Verbose ('Running SQL Command against {0}\{1} as {2}' -f $Server, $Database, $Credential.Username )
 	if (!$WhatIf) { Write-Verbose ($SqlCommand | Out-String) }
  
  function openSqlConn {
