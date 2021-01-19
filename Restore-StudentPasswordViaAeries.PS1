@@ -35,9 +35,10 @@ param (
  [Parameter(Mandatory = $True)]
  [System.Management.Automation.PSCredential]$SISCredential,
  [Parameter(Mandatory = $false)]
- [string]$PrimaryPasswordGroup,
+ [string]$PrimaryGroup,
  [Parameter(Mandatory = $true)]
- [string]$SecondaryPasswordGroup,
+ [string]$SecondaryGroup,
+ [Alias('wi')]
  [SWITCH]$WhatIf
 )
 
@@ -60,14 +61,15 @@ $adCmdLets = @(
 )
 Import-PSSession -Session $adSession -Module ActiveDirectory -CommandName $adCmdLets -AllowClobber > $null
 
-$query = Get-Content -Path .\sql\aeries-adpw.sql -Raw
+$usrFromLogQueryBase = Get-Content -Path .\sql\query-log.sql -Raw
+$pwResetQuery = Get-Content -Path .\sql\aeries-adpw.sql -Raw
 $sisParams = @{
  Server     = $SISServer
  Database   = $SISDatabase
  Credential = $SISCredential
 }
 do {
- $studentResets = Invoke-SqlCommand @sisParams -Query $query
+ $studentResets = Invoke-SqlCommand @sisParams -Query $pwResetQuery
  foreach ( $stu in $studentResets ) {
   # Parse Database Query Results
   Write-Verbose ( $stu | Out-String ) # info on the current DB result being processed.
@@ -78,8 +80,14 @@ do {
    Write-Debug 'process?'
    $sam = $user.samAccountName
 
+   # Get Staff login name
+   $usrFromLogQuery = $usrFromLogQueryBase -f $empId
+   $logData = (Invoke-SqlCommand @sisParams -Query $usrFromLogQuery)
+   # $logData
+   $staffSamid = $logData.USR.ToUpper()
+
    if ($stu.GR -ge 6){
-    $targetGroup = $SecondaryPasswordGroup
+    $targetGroup = $SecondaryGroup
     $removeParams = @{
      Identity = $user.ObjectGUID
      MemberOf = $targetGroup
@@ -89,7 +97,7 @@ do {
     }
     Remove-ADPrincipalGroupMembership @removeParams
     Write-Verbose ('{0} (GR:{1}) removed from {2}' -f $sam, $stu.GR, $targetGroup)
-    Start-Sleep 15 # Give AD Time to replicate
+    if (!$WhatIf) { Start-Sleep 15 } # Give AD Time to replicate
     $PasswordNeverExpires = $false
    } else {
     $PasswordNeverExpires = $true
@@ -100,7 +108,7 @@ do {
    Write-Verbose $plainPW
    $pw = (ConvertTo-SecureString $plainPW -AsPlainText -force)
    Set-ADAccountPassword -Identity $user.ObjectGuid -NewPassword $pw -Reset -Confirm:$false -Whatif:$WhatIf
-   Add-Log reset ('{0},AD Password Restored' -f $sam)
+   Add-Log reset ('{0},AD Password Restored by user {1}' -f $sam, $staffSamid)
 
    # $userParams
    Write-Verbose "$sam,Set-ADUser Params"
@@ -109,7 +117,7 @@ do {
    if ($stu.GR -ge 6){
     Add-ADPrincipalGroupMembership -Identity $user.ObjectGUID -MemberOf $targetGroup -Confirm:$False -WhatIf:$WhatIf
     Write-Verbose ('{0} (GR:{1}) added to {2}' -f $sam, $stu.GR, $targetGroup)
-    Start-Sleep 5
+    if (!$WhatIf){ Start-Sleep 5 }
     Set-ADUser -Identity $user.ObjectGuid -Replace @{pwdlastset=0} -Confirm:$false -WhatIf:$WhatIf
    }
 
