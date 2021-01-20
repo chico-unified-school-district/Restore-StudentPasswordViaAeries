@@ -7,9 +7,9 @@
 		and sets and activates or resets AD account passwords.
 		After the password is reset the 'ADPW' value is set to 'N'.
 	.EXAMPLE
-		.\Restore-StudentPasswordViaAeries.PS1 -Dc $dc -ADCred $adCred -SISConn $sisConn -SISCred $sisCred
+		.\Restore-StudentPasswordViaAeries.PS1 -Dc $dc -ADCred $adCred -SISConn $sisConn -SISCred $sisCred -PrimaryGroup ADGroup1 -SecondaryGroup ADGroup2
 	.EXAMPLE
-		.\Restore-StudentPasswordViaAeries.PS1 -Dc $dc -ADCred $adCred -SISConn $sisConn -SISCred $sisCred -WhatIf -Verbose -Debug
+		.\Restore-StudentPasswordViaAeries.PS1 -Dc $dc -ADCred $adCred -SISConn $sisConn -SISCred $sisCred  -PrimaryGroup ADGroup1 -SecondaryGroup ADGroup2 -WhatIf -Verbose -Debug
 	.INPUTS
 	.OUTPUTS
 	.NOTES
