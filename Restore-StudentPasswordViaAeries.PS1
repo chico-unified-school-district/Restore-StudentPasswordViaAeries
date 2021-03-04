@@ -20,7 +20,7 @@
 	.OUTPUTS
 	.NOTES
   Requires AD Account running the script have 'Account Operator' permissions in AD
-  Aeries user account requires SELECT permission to STU table and UPDATE permission to SUP table.  
+  Aeries user account requires SELECT permission to STU table and UPDATE permission to SUP table.
 #>
 [cmdletbinding()]
 param (
@@ -91,8 +91,8 @@ do {
    $logData = (Invoke-SqlCommand @sisParams -Query $usrFromLogQuery)
    # $logData
    if ($logData.USR) {
-    try { $staffSamid = $logData.USR.ToUpper()}
-    catch {Add-Log warning 'cannot convert data to Upper case. {0}' -f $logData.USR}
+    # Check USER data and attempt to convert to all UPPER case
+    if ( ($logData.USR -is [string]) -and ($null -ne $logData.USR) ) { $staffSamid = $logData.USR.ToUpper() }
    }
 
    if ($stu.GR -ge 6){
