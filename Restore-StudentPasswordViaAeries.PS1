@@ -7,9 +7,15 @@
 		and sets and activates or resets AD account passwords.
 		After the password is reset the 'ADPW' value is set to 'N'.
 	.EXAMPLE
+<<<<<<< HEAD
 		.\Restore-StudentPasswordViaAeries.PS1 -Dc $dc -ADCred $adCred -SISConn $sisConn -SISCred $sisCred -SecondaryPasswordGroup SomeADPasswordPolicyGroup
 	.EXAMPLE
 		.\Restore-StudentPasswordViaAeries.PS1 -Dc $dc -ADCred $adCred -SISConn $sisConn -SISCred $sisCred -SecondaryPasswordGroup SomeADPasswordPolicyGroup -WhatIf -Verbose -Debug
+=======
+		.\Restore-StudentPasswordViaAeries.PS1 -Dc $dc -ADCred $adCred -SISConn $sisConn -SISCred $sisCred -PrimaryGroup ADGroup1 -SecondaryGroup ADGroup2
+	.EXAMPLE
+		.\Restore-StudentPasswordViaAeries.PS1 -Dc $dc -ADCred $adCred -SISConn $sisConn -SISCred $sisCred  -PrimaryGroup ADGroup1 -SecondaryGroup ADGroup2 -WhatIf -Verbose -Debug
+>>>>>>> include-usr
 	.INPUTS
 	.OUTPUTS
 	.NOTES
@@ -84,7 +90,10 @@ do {
    $usrFromLogQuery = $usrFromLogQueryBase -f $empId
    $logData = (Invoke-SqlCommand @sisParams -Query $usrFromLogQuery)
    # $logData
-   $staffSamid = $logData.USR.ToUpper()
+   if ($logData.USR) {
+    try { $staffSamid = $logData.USR.ToUpper()}
+    catch {Add-Log warning 'cannot convert data to Upper case. {0}' -f $logData.USR}
+   }
 
    if ($stu.GR -ge 6){
     $targetGroup = $SecondaryGroup
