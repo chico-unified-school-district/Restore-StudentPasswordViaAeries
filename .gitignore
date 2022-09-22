@@ -8,3 +8,5 @@ logs/*
 *oauth2.txt
 /lib/dict1.txt
 /lib/dict2.txt
+/notes.ps1
+/jenkins.ps1
