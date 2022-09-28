@@ -58,14 +58,14 @@ Get-PSSession | Remove-PSSession -WhatIf:$false
 . .\lib\Select-DomainController.ps1
 . .\lib\Show-TestRun.ps1
 
-function newADSession {
+function Test-ADSession {
   # AD Domain Controller Session
-  $dc = Select-DomainController $DomainControllers
+  if (($script:dc) -and (Test-ComputerSecureChannel -Server $script:dc)) { return }
+  Clear-SessionData
+  $script:dc = Select-DomainController $DomainControllers
   $adCmdLets = 'Get-ADUser', 'Set-ADUser', 'Set-ADAccountPassword', 'Remove-ADGroupMember', 'Add-ADGroupMember'
   New-ADSession -dc $dc -cmdlets $adCmdLets -cred $ADCredential
 }
-
-'SqlServer' | Load-Module
 
 $usrFromLogQueryBase = Get-Content -Path .\sql\query-log.sql -Raw
 $pwResetQuery = Get-Content -Path .\sql\aeries-adpw.sql -Raw
@@ -75,13 +75,11 @@ $sisParams = @{
   Database   = $SISDatabase
   Credential = $SISCredential
 }
-
 Show-TestRun
 'SqlServer' | Load-Module
 Write-Host ('Starting {0}. Checks SIS Database everyevery 3 seconds' -f $MyInvocation.MyCommand.Name)
 do {
-  Clear-SessionData
-  newADSession
+  Test-ADSession
   $studentResets = Invoke-SqlCmd @sisParams -Query $pwResetQuery
   foreach ( $stu in $studentResets ) {
     # Parse Database Query Results
@@ -113,7 +111,7 @@ do {
 
       if ([int]$stu.GR -ge 6) {
         Remove-ADGroupMember @ADGroupParams
-        Write-Verbose ('{0} (GR:{1}) removed from {2}' -f $sam, $stu.GR, $targetGroup)
+        Write-Host ('{0} (GR:{1}) removed from {2}' -f $sam, $stu.GR, $targetGroup)
         if (!$WhatIf) { Start-Sleep 15 } # Give AD Time to replicate
         $PasswordNeverExpires = $false
       }
@@ -129,17 +127,24 @@ do {
       Add-Log reset ('{0},AD Password Restored by user {1}' -f $sam, $staffSamid)
 
       # $userParams
-      Write-Verbose "$sam,Set-ADUser Params"
-      Set-ADuser -Identity $user.ObjectGuid -Enabled:$True -PasswordNeverExpires:$PasswordNeverExpires -Confirm:$false -WhatIf:$WhatIf
+      Write-Host "$sam,Set-ADUser Params"
+      $adUserParams = @{
+        Identity             = $user.ObjectGuid
+        Enabled              = $true
+        PasswordNeverExpires = $PasswordNeverExpires
+        Confirm              = $false
+        WhatIf               = $WhatIf
+      }
+      Set-ADuser @adUserParams
 
       if ([int]$stu.GR -ge 6) {
         Add-ADGroupMember @ADGroupParams
-        Write-Verbose ('{0} (GR:{1}) added to {2}' -f $sam, $stu.GR, $targetGroup)
+        Write-Host ('{0} (GR:{1}) Added to {2}' -f $sam, $stu.GR, $targetGroup)
         if (!$WhatIf) { Start-Sleep 5 }
         Set-ADUser -Identity $user.ObjectGuid -Replace @{pwdlastset = 0 } -Confirm:$false -WhatIf:$WhatIf
       }
 
-      Write-Verbose "$sam,Aeries: Update ADPW field."
+      Write-Host "$sam,Aeries: Update ADPW field."
       $updateQuery = "UPDATE SUP SET ADPW = `'N`' WHERE SC = {0} and SN = {1}" -f $stu.SC, $stu.SN
       if ($WhatIf) { $updateQuery }
       else { Invoke-Sqlcmd @sisParams -Query $updateQuery }
