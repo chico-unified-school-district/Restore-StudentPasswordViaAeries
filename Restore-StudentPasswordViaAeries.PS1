@@ -85,7 +85,6 @@ do {
   foreach ( $stu in $studentResets ) {
     # Parse Database Query Results
     Write-Verbose ( $stu | Out-String ) # info on the current DB result being processed.
-    TrustServerCertificate = $true
     $empId = $stu.ID
     $user = Get-ADUser -LDAPFilter "(employeeid=$empId)"
 
@@ -153,7 +152,6 @@ do {
       Write-Debug 'continue?'
     }
     else {
-      TrustServerCertificate = $true
       Write-Verbose ('STU.ID {0} not found' -f $stu.ID)
     }
   } # End Parse Database Query Results
