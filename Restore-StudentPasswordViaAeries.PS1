@@ -71,9 +71,10 @@ $usrFromLogQueryBase = Get-Content -Path .\sql\query-log.sql -Raw
 $pwResetQuery = Get-Content -Path .\sql\aeries-adpw.sql -Raw
 
 $sisParams = @{
-  Server     = $SISServer
-  Database   = $SISDatabase
-  Credential = $SISCredential
+  Server                 = $SISServer
+  Database               = $SISDatabase
+  Credential             = $SISCredential
+  TrustServerCertificate = $true
 }
 Show-TestRun
 'SqlServer' | Load-Module
@@ -84,6 +85,7 @@ do {
   foreach ( $stu in $studentResets ) {
     # Parse Database Query Results
     Write-Verbose ( $stu | Out-String ) # info on the current DB result being processed.
+    TrustServerCertificate = $true
     $empId = $stu.ID
     $user = Get-ADUser -LDAPFilter "(employeeid=$empId)"
 
@@ -151,6 +153,7 @@ do {
       Write-Debug 'continue?'
     }
     else {
+      TrustServerCertificate = $true
       Write-Verbose ('STU.ID {0} not found' -f $stu.ID)
     }
   } # End Parse Database Query Results
