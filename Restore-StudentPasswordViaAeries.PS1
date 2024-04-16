@@ -39,6 +39,8 @@ param (
   # Aeries SQL user account with SELECT permission to STU table
   [Parameter(Mandatory = $True)]
   [System.Management.Automation.PSCredential]$SISCredential,
+  [Parameter(Mandatory = $True)]
+  [int[]]$SiteCodes,
   [Parameter(Mandatory = $false)]
   [string]$PrimaryGroup,
   [Parameter(Mandatory = $true)]
@@ -81,7 +83,7 @@ Show-TestRun
 Write-Host ('Starting {0}. Checks SIS Database everyevery 3 seconds' -f $MyInvocation.MyCommand.Name)
 do {
   Test-ADSession
-  $studentResets = Invoke-SqlCmd @sisParams -Query $pwResetQuery
+  $studentResets = Invoke-SqlCmd @sisParams -Query ($pwResetQuery -f ($SiteCodes -join ','))
   foreach ( $stu in $studentResets ) {
     # Parse Database Query Results
     Write-Verbose ( $stu | Out-String ) # info on the current DB result being processed.

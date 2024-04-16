@@ -10,3 +10,4 @@ logs/*
 /lib/dict2.txt
 /notes.ps1
 /jenkins.ps1
+/params.ps1
