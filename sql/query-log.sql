@@ -1,7 +1,7 @@
 SELECT TOP 1 USR
 FROM LOG
 WHERE
-ID = {0}
+ID = @id
 AND CD = 'SUPchg'
 AND ND LIKE '%ADPW%Y%'
 AND DTS > DATEADD(minute,-5,getdate())
