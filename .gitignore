@@ -11,3 +11,4 @@ logs/*
 /notes.ps1
 /jenkins.ps1
 /params.ps1
+/.vscode
