@@ -34,7 +34,7 @@ param (
  [string[]]$ADGroups,
  # Aeries Server\Database combination
  [Parameter(Mandatory = $True)]
- [ValidateScript( { Test-Connection -ComputerName $_ -Quiet -Count 1 })]
+ # [ValidateScript( { Test-Connection -ComputerName $_ -Quiet -Count 1 })]
  [string]$SISServer,
  [Parameter(Mandatory = $True)]
  [string]$SISDatabase,
