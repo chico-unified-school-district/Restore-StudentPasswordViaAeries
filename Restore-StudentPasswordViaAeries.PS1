@@ -24,28 +24,16 @@
 #>
 [cmdletbinding()]
 param (
- [Parameter(Mandatory = $True)]
- [Alias('DCs')]
- [string[]]$DomainControllers,
- # PSSession to Domain Controller and Use Active Directory CMDLETS
- [Parameter(Mandatory = $True)]
- [System.Management.Automation.PSCredential]$ADCredential,
- [Parameter(Mandatory = $false)]
- [string[]]$ADGroups,
- # Aeries Server\Database combination
- [Parameter(Mandatory = $True)]
- # [ValidateScript( { Test-Connection -ComputerName $_ -Quiet -Count 1 })]
- [string]$SISServer,
- [Parameter(Mandatory = $True)]
- [string]$SISDatabase,
- # Aeries SQL user account with SELECT permission to STU table
- [Parameter(Mandatory = $True)]
- [System.Management.Automation.PSCredential]$SISCredential,
- [Alias('wi')]
- [SWITCH]$WhatIf
+ [Parameter(Mandatory = $True)][PSCredential]$ADCredential,
+ [Parameter(Mandatory = $false)][string[]]$ADGroups,
+ [Parameter(Mandatory = $True)][string]$SISServer,
+ [Parameter(Mandatory = $True)][string]$SISDatabase,
+ [Parameter(Mandatory = $True)][PSCredential]$SISCredential,
+ [Alias('wi')][SWITCH]$WhatIf
 )
 
 function Add-ToPWGroup {
+ param ([pscredential]$cred)
  process {
   $groupErr = $null
   if (!$_.ad) { return $_ }
@@ -53,6 +41,7 @@ function Add-ToPWGroup {
    Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.ad.SamAccountName, $_.group) -F DarkBlue
    $ADGroupParams = @{
     Identity      = $_.group
+    Credential    = $cred
     Members       = $_.ad.ObjectGUID
     ErrorAction   = 'SilentlyContinue'
     ErrorVariable = 'groupErr'
@@ -79,8 +68,10 @@ function Get-SiSData ($sqlParams, $query) {
 }
 
 function Get-ADData {
+ param ([pscredential]$cred)
  process {
   $adParams = @{
+   Credential = $cred
    Filter     = "EmployeeId -eq '{0}'" -f $_.sis.ID
    Properties = 'memberof'
   }
@@ -116,6 +107,7 @@ function New-PWObj {
 }
 
 function Remove-FromPWGroup {
+ param ([pscredential]$cred)
  process {
   $groupErr = $null
   if (!$_.ad) { return $_ }
@@ -123,6 +115,7 @@ function Remove-FromPWGroup {
    Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.ad.SamAccountName, $_.group) -F DarkBlue
    $ADGroupParams = @{
     Identity      = $_.group
+    Credential    = $cred
     Members       = $_.ad.ObjectGUID
     ErrorAction   = 'SilentlyContinue'
     ErrorVariable = 'groupErr'
@@ -140,10 +133,12 @@ function Remove-FromPWGroup {
 }
 
 function Reset-PW {
+ param ([pscredential]$cred)
  process {
   if (!$_.ad) { return $_ }
   $resetParams = @{
    Identity    = $_.ad.ObjectGuid
+   Credential  = $cred
    NewPassword = (ConvertTo-SecureString $_.sis.BD -AsPlainText -Force)
    Reset       = $true
    Confirm     = $false
@@ -170,12 +165,14 @@ function Set-StuADGroup ($groups) {
 }
 
 function Set-PWNeverExpires {
+ param ([pscredential]$cred)
  process {
   if (!$_.ad) { return $_ }
   $expire = if ([int]$_.sis.GR -ge 6) { $false } else { $true }
   if (!$WhatIf) { Start-Sleep 3 } # Give AD Time to replicate
   $adUserParams = @{
    Identity             = $_.ad.ObjectGuid
+   Credential           = $cred
    Enabled              = $true
    PasswordNeverExpires = $expire
    Confirm              = $false
@@ -200,7 +197,8 @@ function Update-SiSPWField ($sqlParams, $query) {
 
 # ============================================================================================
 
-Import-Module -Name CommonScriptFunctions -Cmdlet Show-BlockInfo, Show-TestRun, Connect-ADSession, Clear-SessionData
+Import-Module -Name CommonScriptFunctions -Cmdlet Show-BlockInfo, Show-TestRun
+Import-Module -Name ActiveDirectory -Cmdlet Get-ADUser, Set-ADUser, Set-ADAccountPassword, Remove-ADGroupMember, Add-ADGroupMember
 Import-Module -Name dbatools -Cmdlet Invoke-DbaQuery, Connect-DbaInstance, Set-DbatoolsConfig
 
 if ($WhatIf) { Show-TestRun }
@@ -210,31 +208,29 @@ Show-BlockInfo $SISDatabase
 $queryLog = Get-Content -Path .\sql\query-log.sql -Raw
 $queryPWReset = Get-Content -Path .\sql\aeries-adpw.sql -Raw
 $updatePWSql = "UPDATE SUP SET ADPW = 'N' WHERE SC = @sc and SN = @sn"
-$adCmdLets = 'Get-ADUser', 'Set-ADUser', 'Set-ADAccountPassword', 'Remove-ADGroupMember', 'Add-ADGroupMember'
 
 $sisInstance = @{ Server = Connect-DbaInstance -SqlInstance $SISServer -Database $SISDatabase -SqlCredential $SISCredential }
 
-'Checking SIS Database every 5 seconds...'
+if (!$WhatIf) { 'Checking SIS Database every 5 seconds...' }
 do {
  $sisData = Get-SiSData -sqlParams $sisInstance -query $queryPWReset
- if ($sisData) { Connect-ADSession $DomainControllers $ADCredential $adCmdLets }
 
  $sisData |
   New-PWObj |
-   Get-ADData |
+   Get-ADData -cred $ADCredential |
     Set-StuADGroup $ADGroups |
      Get-SiSLogData $sisInstance $queryLog |
-      Remove-FromPWGroup |
-       Reset-PW |
-        Set-PWNeverExpires |
-         Add-ToPWGroup |
+      Remove-FromPWGroup -cred $ADCredential |
+       Reset-PW -cred $ADCredential |
+        Set-PWNeverExpires -cred $ADCredential |
+         Add-ToPWGroup -cred $ADCredential |
           Update-SiSPWField $sisInstance $updatePWSql |
            Complete-Processing
 
- if ($sisData) { Clear-SessionData }
+ if ($WhatIf) { break }
+ Start-Sleep 5
  # Loop every x seconds until 11:58pm
- if (!$WhatIf) { Start-Sleep 5 }
-} until ( $WhatIf -or ( (Get-Date) -ge (Get-Date '11:58pm') ) )
+} until ( (Get-Date) -ge (Get-Date '11:58pm') )
 
 Show-BlockInfo end
 if ($WhatIf) { Show-TestRun }
