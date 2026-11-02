@@ -198,7 +198,8 @@ function Update-SiSPWField ($sqlParams, $query) {
 # ============================================================================================
 
 Import-Module -Name CommonScriptFunctions -Cmdlet Show-BlockInfo, Show-TestRun
-Import-Module -Name ActiveDirectory -Cmdlet Get-ADUser, Set-ADUser, Set-ADAccountPassword, Remove-ADGroupMember, Add-ADGroupMember
+$cmdlets = 'Get-ADUser', 'Set-ADUser', 'Set-ADAccountPassword', 'Remove-ADGroupMember', 'Add-ADGroupMember'
+Import-Module -Name ActiveDirectory -Cmdlet $cmdlets -WarningAction SilentlyContinue -ErrorAction Stop
 Import-Module -Name dbatools -Cmdlet Invoke-DbaQuery, Connect-DbaInstance, Set-DbatoolsConfig
 
 if ($WhatIf) { Show-TestRun }
